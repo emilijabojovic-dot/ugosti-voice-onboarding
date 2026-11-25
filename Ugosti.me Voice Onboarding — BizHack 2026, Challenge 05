@@ -1,0 +1,157 @@
+# ElenaAI — Voice Onboarding for Ugosti.me Hosts
+
+**BizHack 2026 · Challenge 05 · Ugosti.me**
+
+> Hosts don't fill in a single form. Elena, an AI assistant, starts the conversation, asks one question at a time, and the host answers mostly by voice. Everything that can be found online (Booking, Airbnb, Google) Elena pulls in herself. The host only confirms ("Yes, that's my place") and adds what can't be found: price, bank account, registration licence and calendar link.
+
+## ▶ Try it life: https://dobro-dosli-host-guide.lovable.app/me
+
+
+- **Montenegrin/Serbian:** [TODO: link, e.g. elena.ugosti.me/me]
+- **English:** [TODO: link, e.g. elena.ugosti.me/en]
+- **Demo video:** [TODO: optional, 1–2 min screen recording]
+
+> ⚠️ Please use made-up data only. Do not enter a real bank account, personal ID number or licence.
+
+## 1. The problem
+
+Ugosti.me gets plenty of traffic but very few hosts with complete listings:
+
+| Funnel step | Rate (Aug 2025 – Nov 2026) |
+|---|---|
+| Visit → registration | 11.3% |
+| Registration → complete listing | 1.1% |
+
+Many hosts in Montenegro are small, private and not very active online. They already get guests through Booking.com and Airbnb, so a new platform with a long registration form feels like extra work with an uncertain return.
+
+## 2. Baseline (current process)
+
+*Confirmed with Vladimir Jovanović (Founder & CEO) on 25 Nov 2026.*
+
+- **Time per host registration today:** 1h15 [TODO: host time, team time, or both?]
+- **How it's done today:** the host fills in classic registration forms step by step (property, units, amenities, photos, prices, calendar, payout details). [TODO: confirm/add what the team does by hand]
+- **Manual follow-up and listing work per month:** [TODO: hours]
+
+## 3. What we built
+
+### The flow (5 steps, every step can be skipped and finished later)
+
+| Step | Elena asks | What happens in the background |
+|---|---|---|
+| 0 · Start | Host opens the link (`/me` or `/en`) | Anonymous session is created, so memory works from the first second |
+| 1 · Guests & description | "Describe your place and what kind of guests you like best" | Voice → text → Claude extracts preferred guests, vibe and selling points |
+| 2 · Find the property | "What's your place called and where is it?" | Apify searches Google Maps, Booking and Airbnb → Elena shows a candidate card → after confirmation, full profile (photos, amenities, units, house rules, reviews) is pulled in |
+| 3 · Other platforms & calendar | "Do you also list on other platforms?" | iCal link is validated and saved, so no double bookings |
+| 4 · Price & payout | "What price per night do you want?" (suggestion from Booking) + explanation of the model: the host keeps their full price, the guest pays an 8% fee | Price, minimum stay and bank account are validated and saved |
+| 5 · Licence & preview | "Take a photo of your registration licence" | OCR reads the licence and checks it against the data → host account via phone/email code → private preview of the profile |
+
+At the end, the listing is exported in the Ugosti.me format (JSON/CSV) for the Ugosti.me team to import.
+
+### UX principles
+- One question per message, with quick-reply buttons
+- The microphone is the main input. Elena always repeats what she understood ("Did I get that right?")
+- Cards instead of forms. Nothing is blocking, everything can be done "later"
+- Progress bar ("Step 3 of 6") and memory: if the host comes back, Elena continues where they left off
+- Language is set by the link: Montenegrin/Serbian or English
+- Optional "live conversation" mode with Elena's voice (ElevenLabs Agent)
+
+### Architecture
+
+```
+elena.ugosti.me/me ─┐
+elena.ugosti.me/en ─┴─▶ Lovable PWA (React) ◀── Realtime ── Supabase (Auth · Postgres · Storage · pgvector)
+                           │                                        ▲
+   chat / speech-to-text ──┤                                        │ drafts + memory
+   live voice (WebRTC) ────┘                                        │
+Supabase Edge Functions ─▶ n8n workflows ─▶ Claude (Haiku / Sonnet) ┤
+                         ─▶ ElevenLabs (Scribe STT, TTS, Agents)    │
+                   n8n ─▶ Apify actors (Google Maps, Booking, Airbnb)
+                   n8n ─▶ export (JSON/CSV in Ugosti.me format) ─▶ Ugosti.me team
+```
+
+**Key design decision:** the flow is driven by a state machine in n8n/Supabase (`current_step`), not by a free-running AI agent. The LLM only does two things: extract structured data from the host's answer and, when needed, personalise the next message. This makes the flow predictable and much cheaper.
+
+### Tools used
+| Tool | Role |
+|---|---|
+| **Lovable** | Mobile web app (PWA), chat UI, cards, preview page |
+| **Supabase** | Database, auth, file storage, memory, knowledge base (pgvector) |
+| **n8n** | All business logic: step handler, property search, scraping, mapping, export |
+| **ElevenLabs** | Speech-to-text (Scribe), Elena's voice (TTS), live voice agents ME/EN |
+| **Apify** | Finding the property and pulling its data from Google Maps, Booking, Airbnb |
+| **Claude API** | Data extraction (Haiku), listing description (Sonnet), licence OCR |
+| **GitHub** | This repository |
+
+## 4. Results
+
+*Test set: [TODO: number] existing public Ugosti.me properties used as ground truth (e.g. `/location/321`, `/location/408`). Elena has to find each one by name + city and fill in the fields correctly.*
+
+| Measure | Before | After |
+|---|---|---|
+| Time per host registration | 1h15 | [TODO] min (target: under 15 min) |
+| Fields filled in correctly | — | [TODO]% (target ≥ 80%) |
+| Properties found automatically | — | [TODO] of [TODO] |
+
+- **Cases tested:** [TODO: number] ([TODO: ground-truth properties / test users])
+- **Running cost per onboarded host:** [TODO] € (Claude tokens + ElevenLabs minutes/characters + Apify compute units), tracked in `usage_log`
+- **Monthly running cost:** [TODO] €, compared with [TODO] € of manual work today
+
+## 5. How to run it
+
+### What you need
+- [Lovable](https://lovable.dev) account (frontend)
+- [Supabase](https://supabase.com) project
+- [n8n](https://n8n.io) (cloud or self-hosted)
+- [ElevenLabs](https://elevenlabs.io) account
+- [Apify](https://apify.com) account
+- [Anthropic](https://console.anthropic.com) API key
+- [TODO: SMS/email provider for login codes, if used]
+
+### Steps
+1. **Clone this repo:** `git clone [TODO: repo URL]`
+2. **Environment variables:** copy `.env.example` to `.env` and fill in your keys. Keys stay on the server (Supabase Edge Functions / n8n), never in the browser.
+3. **Supabase:**
+   - Run the database setup from `supabase/` [TODO: exact file] to create the tables (`onboarding_sessions`, `messages`, `memory_facts`, `host_draft`, `location_draft`, `unit_drafts`, …)
+   - Enable anonymous sign-in and the `pgvector` extension
+   - Create storage buckets: `property-photos`, `licenses` (private), `tts-cache`
+   - Deploy the Edge Functions: `/chat`, `/stt`, `/tts`, `/upload`, `/agent-token`
+4. **n8n:** import the workflows from `n8n/` (Workflows → Import from file). Add credentials for Supabase, Anthropic, ElevenLabs and Apify. Activate the workflows. [TODO: which workflows are in the demo version]
+5. **ElevenLabs:** create two agents (`Elena-ME`, `Elena-EN`) using the prompts and settings in `elevenlabs/`. Point the server tools and the post-call webhook to your n8n URLs.
+6. **Apify:** add your API token in n8n. Actors used: [TODO: confirm, e.g. `compass/crawler-google-places`, `voyager/booking-scraper`, `tri_angle/airbnb-scraper`].
+7. **Frontend:** [TODO: open the Lovable project / run locally with `npm install` and `npm run dev`]
+8. **Test:** open `/me` or `/en` and start with a sample property from `data/`.
+
+### Repo structure
+```
+README.md
+.env.example        # keys needed, no real values
+frontend/           # Lovable app
+supabase/           # database setup + edge functions
+n8n/                # exported n8n workflows (JSON)
+elevenlabs/         # agent prompts + settings (ME / EN)
+data/               # sample / test properties
+```
+[TODO: adjust to the real structure]
+
+## 6. What we did NOT build (yet)
+- No new booking or payment system
+- No direct import into Ugosti.me: the result is an export file for the Ugosti.me team
+- Montenegro first. Other markets (Albania, North Macedonia, Bosnia and Herzegovina) later
+- [TODO: which of the 5 delivery phases are NOT in the demo, e.g. reminders, iCal guides, Pulse menu]
+
+## 7. How Ugosti.me keeps using it
+- Built on tools Ugosti.me can run itself (Supabase, n8n, ElevenLabs, Apify), and Elena is already the name of Ugosti.me's AI
+- Fields are mapped to the existing Ugosti.me data model (User → Host → Location → Units)
+- Cost per onboarded host is measured from day one (`usage_log`)
+- Next steps: direct API import into Ugosti.me, reminders for skipped steps, more languages and markets
+
+## 8. Data, privacy and open questions
+- Only anonymised or made-up data is in this repository
+- Sensitive data (bank account, personal ID, licence) is stored in private storage, and each user only sees their own data (Supabase row-level security)
+- **Business model:** the guest pays an 8% fee on top. The host keeps the full price they set.
+- **Later:** reusing photos and reviews from other platforms at scale. For the first version, the host confirms in the preview that the photos are their own.
+
+## Team
+- **Vladimir Jovanović:** Founder & CEO of Ugosti.me, strategy
+- **Emilija Bojović:** coordination
+- **Amela Murić:** building the app
